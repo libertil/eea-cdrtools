@@ -33,10 +33,10 @@ DELETE_ACTION = "delete"
 
 
 def build_url(repo, eionet_login, secure):
-    """ Builds a base url for a Rest call to CDR aAPI
+    """ Builds a base url for a Rest call to CDR API
 
     Parameters:
-    repo (string): either CDR, CDRTEST or CDRSANDBOX
+    repo (string): either CDR, CDRTEST or CDRSANDBOX depending on the API 
     eionet_login (tuple):   tuple of eionet login and password or None
     secure (boolean): if True https url will be returned if login  is provided 
     then https will be used regardless of secure
@@ -147,7 +147,22 @@ def get_envelopes_rest(obligation,
                        convert_dates=True,
                        fields=DEFAULT_FIELDS
                        ):
-    
+    """ Returns a list of envelopes based on the query parameters
+
+
+    Parameters:
+
+    repo (string): either CDR, CDRTEST or CDRSANDBOX depending on the API
+    secure (boolean): True when using https
+    is_released (boolean): when True only released envelopes are included
+    country_code (string): two characters country ISO code. When specified 
+                           only envelopes belonging to the country are returned
+    reporting_date_start: DEPRECATED
+    convert_dates (boolean): when set to True the data fields in the returned 
+                            object are converted from string to datetime
+    fields (list): list of field names to include in the output
+    """
+
     base_url = build_url(repo, eionet_login, secure)
     
     url = build_rest_query(base_url, obligation,
@@ -171,10 +186,23 @@ def get_envelopes_rest(obligation,
 def get_envelope_by_url(envelope_url, 
                         eionet_login=None,
                         convert_dates=True,
-                        repo="CDR",
+                        repo=None,
                         fields=DEFAULT_FIELDS):
 
-    base_url = build_url(repo, eionet_login, True)
+    """ Returns a single envelope from the Rest API
+
+    Parameters:
+    envelope_url (string): url of the envelope
+    eionet_login (tuple): tuple of eionet login and password
+    repo: DEPRECATED
+    convert_dates (boolean): when set to True the data fields in the returned 
+                             object are converted from string to datetime
+
+    
+    Returns (dict): a dictionry representation of the envelope
+    """
+
+    base_url = extract_base_url(envelope_url)
     
     url = f"{base_url}/api/envelopes?url={envelope_url}"
     
@@ -190,6 +218,17 @@ def get_envelope_by_url(envelope_url,
 
 
 def convert_date_fields(items, date_fields, sub_elements={}):
+    """ Converts the date fileds in the envelope represtation from string 
+    to datetime
+
+    date_fields (list): list of field names to convert
+    items: collection of dictionaries
+    sub_elements: DEPRECATED
+
+    Returns (object): the dictionary where the date_fields are converted
+
+    """
+
     for df in date_fields:  
         for it in items:
             if df in it:
