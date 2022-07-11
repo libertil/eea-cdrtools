@@ -28,3 +28,6 @@ then
 	pipx install "git+https://github.com/libertil/cdr-tools"
 
 
+at this point cdrtools is a available at command line. You can get an overview of the functionalities by issuing
+
+	cdrtools --help
