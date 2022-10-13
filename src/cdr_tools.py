@@ -84,9 +84,9 @@ def parse_ns(source_file, STANDARD_NS):
     for event, elem in context:
         prefix, namespace = elem
         ns_map[prefix] = namespace
-        rev_map = dict(map(reversed, ns_map.items()))
-        ns_map = {STANDARD_NS[k]: k for k, v
-                  in rev_map.items() if k in STANDARD_NS}
+    rev_map = dict(map(reversed, ns_map.items()))
+    ns_map = {STANDARD_NS[k]: k for k, v
+              in rev_map.items() if k in STANDARD_NS}
 
     return ns_map
 
@@ -94,6 +94,7 @@ def parse_ns(source_file, STANDARD_NS):
 def extract_identifiers(in_file, identifier_map):
 
     ns_map = parse_ns(in_file, STANDARD_NS)
+
     root = etree.parse(in_file)
     res = {}
     for feat_name, feat_xpath in identifier_map.items():
@@ -122,12 +123,12 @@ def main():
               help='Process only released envelopes')
 @click.option('--repo', '-r',
               type=click.Choice(URL_MAP.keys(), case_sensitive=False),
-              default='CDR', required=True)
+              default='CDR')
 @click.option('--obligation', '-o',
               type=click.Choice(OBLIGATION_CODE_MAP.keys(),
                                 case_sensitive=False),
               required=True)
-@click.option("--year", "-y", type=int)
+@click.argument("year", type=int)
 @click.argument("out", type=click.File('w'), default=None, required=False)
 def list_files(country_code, cdr_user, cdr_pwd, latest, released,
                repo, obligation, year, out):
@@ -138,7 +139,7 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
        All the main properties of the envelope such as url,
        reporting period etc. are copied and repeated for each file found
        in the envelope.
-       If required, a comma separated text file is produced as output. 
+       If required, a comma separated text file is produced as output.
 
        The file contains:
        - obligation code
@@ -223,9 +224,9 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
     # Write output file
     fieldnames = results[0].keys()
     if not out:
-        out =  "envelopes_{}_{}.csv".format(obligation.replace(':', '-'),
-                                            datetime.datetime.now().
-                                            strftime("%Y-%m-%d_%H_%M_%S"))
+        out = "envelopes_{}_{}.csv".format(obligation.replace(':', '-'),
+                                           datetime.datetime.now().
+                                           strftime("%Y-%m-%d_%H_%M_%S"))
         out = open(f"./{out}", "w")
 
     writer = csv.DictWriter(out, fieldnames=fieldnames)
@@ -245,6 +246,9 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
               help='Process only last envelope')
 @click.option('--released/--draft', default=True,
               help='Process only released envelopes')
+@click.option('--update_env', is_flag=True, default=False,
+              help=("Update reference to orginal envelope url "
+                    "in the xml files with new one"))
 @click.option('--obligation', '-o',
               type=click.Choice(OBLIGATION_CODE_MAP.keys(),
                                 case_sensitive=False),
@@ -252,7 +256,7 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
 @click.argument("reporting_year", type=int)
 @click.argument("out", type=click.File('w'), default='-', required=False)
 def clone_cdrtest(country_code, cdrtest_user, cdrtest_pwd, latest, released,
-                  obligation, reporting_year, out):
+                  update_env, obligation, reporting_year, out):
     """Copies a set of envelopes from CDR to CDRTEST for a given obligation,
        reporting year, country code. The copied envelopes contain  all
        the files in the original ones and have the same title and
@@ -289,7 +293,7 @@ def clone_cdrtest(country_code, cdrtest_user, cdrtest_pwd, latest, released,
       copy all the envelopes of AQ dataflow H reported for 2017  for Italy
       and Spain and save the output to out.txt.
 
-      python cdr_test.py -c it -c es aqd:h 2017 out.txt
+      python cdr_tools.py clone-cdrtest -c it -c es aqd:h 2017 out.txt
 
     """
     # Get the CDR envelopes per obligation
@@ -347,11 +351,27 @@ def clone_cdrtest(country_code, cdrtest_user, cdrtest_pwd, latest, released,
 
         for iidx, fl in enumerate(files):
             fileName = fl['url'].split('/')[-1]
-            click.echo(f"Processing file {iidx + 1} of {len(files)} {fileName}")
+            click.echo(f"Processing file {iidx + 1}"
+                       f" of {len(files)} {fileName}")
 
             with open("./{}".format(fileName), "wb") as file:
                 fr = requests.get(fl['url'])
-                file.write(fr.content)
+
+                content = fr.content
+
+                if update_env and fl['contentType'] == 'text/xml':
+                    click.echo(f"Updating references to envelope url")
+
+                    old_url = fl['url'].split('//')[1]
+                    old_url = '/'.join(old_url.split('/')[0:-1])
+                    old_url = str.encode(old_url)
+
+                    new_url = envelope_url.split('//')[1]
+                    new_url = str.encode(new_url)
+
+                    content = content.replace(old_url, new_url)
+
+                file.write(content)
 
                 upload_file(envelope_url,
                             './{}'.format(fileName),
@@ -695,9 +715,11 @@ def activate_qa(file, envelope_field, cdrtest_user, cdrtest_pwd,
               help='Login user to cdr.')
 @click.option('--cdr_pwd', prompt=True, hide_input=True,
               help='Password to cdr.')
+@click.option('--details', '-d', is_flag=True, default=False,
+              help='Output non-matching identifiers')
 @click.argument("left_url", required=True)
 @click.argument("right_url", required=True)
-def diff_ids(left_url, right_url, cdr_user, cdr_pwd,):
+def diff_ids(left_url, right_url, cdr_user, cdr_pwd, details):
     """  Reports the differences in the identifiers found in two XML files
          returns the total number of unique identifiers by feature type for
          each file, the identifiers found in the left file but not in the
@@ -723,6 +745,10 @@ def diff_ids(left_url, right_url, cdr_user, cdr_pwd,):
         exit(0)
 
     filename_l = extract_filename(left_url)
+    if filename_l.split('.')[-1] != 'xml':
+        click.echo((f'Provide a full url to the Left XML file not envelope '))
+        exit(0)
+
     click.echo(f'Downloading left file {filename_l} url {left_url}')
     download_file(left_url, '.', filename_l, eionet_login)
 
@@ -731,6 +757,10 @@ def diff_ids(left_url, right_url, cdr_user, cdr_pwd,):
     os.unlink("./{}".format(filename_l))
 
     filename_r = extract_filename(right_url)
+    if filename_r.split('.')[-1] != 'xml':
+        click.echo((f'Provide a full url to the Right XML file not envelope '))
+        exit(0)
+
     click.echo(f'Downloading right file {filename_r} url {right_url}')
     download_file(right_url, '.', filename_r, eionet_login)
 
@@ -739,7 +769,13 @@ def diff_ids(left_url, right_url, cdr_user, cdr_pwd,):
     os.unlink("./{}".format(filename_r))
 
     for feature_type, _ in FEATURE_TYPES_MAP[obligation].items():
-        click.echo(f'**Feature: {feature_type} unique identifiers left: {len(left_identifiers[feature_type])} right: {len(right_identifiers[feature_type])} `')
+        click.echo('-'*80)
+        click.echo(f'Feature: {feature_type}')
+        click.echo(f'Unique identifiers '
+                   f'left:  {len(left_identifiers[feature_type])} '
+                   f'right: {len(right_identifiers[feature_type])} ')
+        click.echo('-'*80)
+
         lid = set(left_identifiers[feature_type])
         rid = set(right_identifiers[feature_type])
 
@@ -748,14 +784,20 @@ def diff_ids(left_url, right_url, cdr_user, cdr_pwd,):
 
         if len(left_not_in_right) > 0:
             tmp = "\n".join(sorted(left_not_in_right))
-            click.echo(f'*Identifiers in left not found in right ({len(left_not_in_right)}):\n{tmp}')
+            click.echo(f'->Identifiers in left not found in right '
+                       f'({len(left_not_in_right)})')
+            if details:
+                click.echo(f'\n{tmp}')
 
         if len(right_not_in_left) > 0:
             tmp = "\n".join(sorted(right_not_in_left))
-            click.echo(f'*Identifiers in right not found in left ({len(right_not_in_left)}):\n{tmp}')
+            click.echo(f'<-Identifiers in right not found in left '
+                       f'({len(right_not_in_left)})')
+            if details:
+                click.echo(f'\n{tmp}')
 
         if (len(right_not_in_left) == 0) and (len(left_not_in_right) == 0):
-            click.echo(f'Complete Match')
+            click.echo(f'--Complete Match')
 
 
 if __name__ == "__main__":

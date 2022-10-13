@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cdr_tools"
-version = "0.5.0"
+version = "0.5.1"
 description = "A set of tool to interact with EEA Reportnet 2 API. It included CLI tools and supporting library"
 readme = "README.md"
 authors = [{ name = "Luca Liberti", email = "aa@aa.com" }]
