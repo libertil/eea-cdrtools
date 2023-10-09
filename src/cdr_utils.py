@@ -67,7 +67,7 @@ def build_rest_query(base_url,
                      obligation,
                      country_code=None,
                      is_released=None,
-                     reporting_date_start=None,
+                     modified_date_start=None,
                      fields=None):
     """
     Builds a query to the CDR REST API to obtain envelope data
@@ -79,7 +79,8 @@ def build_rest_query(base_url,
     is_released (boolean): if specified then only released (True) or unreleased
                            envelopes will be returned
 
-    reporting_date_start (string):  DEPRECATED
+    modified_date_start (string):  returns only the entries that were modified
+                                   after the specified date TODO specify format
     fields (array): names of the fields to extract
 
     Returns (string): a url to the Rest API to extrat the envelope
@@ -95,8 +96,8 @@ def build_rest_query(base_url,
 
         url = f"{url}&isReleased={int(is_released)}"
 
-    # if reporting_date_start:
-    #    url = f"{url}&reportingDateStart={reporting_date_start}"
+    if modified_date_start:
+        url = f"{url}&modifiedDateStart={modified_date_start}"
 
     if fields:
         url = f"{url}&fields={fields}"
@@ -142,6 +143,7 @@ def get_envelopes_rest(obligation,
                        reporting_year=None,
                        convert_dates=True,
                        latest=False,
+                       modified_date_start=None,
                        fields=DEFAULT_FIELDS
                        ):
     """ Returns a list of envelopes from the REST API based on the query
@@ -159,6 +161,8 @@ def get_envelopes_rest(obligation,
                              object are converted from string to datetime
     latest (boolean): if True only latest envelopes by each country/reporting
                       year are returned
+    modified_date_start (): only return envelopes that were modified after the
+                            specified date
     fields (list): list of field names to include in the output
     """
 
@@ -174,6 +178,7 @@ def get_envelopes_rest(obligation,
         url = build_rest_query(base_url, obligation,
                                is_released=is_released,
                                country_code=c,
+                               modified_date_start=modified_date_start,
                                fields=",".join(fields))
 
         #print(url)
@@ -379,7 +384,7 @@ def start_envelope_qa(envelope_url,
 
 
 def upload_file(envelope_url,
-                file, 
+                file,
                 eionet_login=None):
     """ Uploads a file in a envelope
 
