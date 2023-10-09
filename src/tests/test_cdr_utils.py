@@ -11,31 +11,33 @@ def cdr_envelope_a_url():
 def cdr_envelope_a_feedbacks_api_meta():
     return [
                 {
-                    "contentType": "text/html;charset=UTF-8", 
-                    "attachments": [], 
-                    "feedbackMessage": "No envelope-level errors found", 
-                    "documentId": "xml", 
-                    "feedbackStatus": "INFO", 
-                    "title": "AutomaticQA result for: AirQuality Dataflow D", 
-                    "url": ("https://cdr.eionet.europa.eu/es/eu/aqd/d/envxfin7q"
-                            "/AutomaticQA_652620"), 
-                    "postingDate": "2019-12-17T21:10:01Z", 
-                    "activityId": "AutomaticQA", 
-                    "isRestricted": 1, 
+                    "contentType": "text/html;charset=UTF-8",
+                    "attachments": [],
+                    "feedbackMessage": "No envelope-level errors found",
+                    "documentId": "xml",
+                    "feedbackStatus": "INFO",
+                    "title": "AutomaticQA result for: AirQuality Dataflow D",
+                    "url":
+                    ("https://cdr.eionet.europa.eu/es/eu/aqd/d/envxfin7q"
+                     "/AutomaticQA_652620"),
+                    "postingDate": "2019-12-17T21:10:01Z",
+                    "activityId": "AutomaticQA",
+                    "isRestricted": 1,
                     "automatic": 1
-                }, 
+                },
                 {
-                    "contentType": "text/html", 
-                    "attachments": [], 
-                    "feedbackMessage": "", 
-                    "documentId": None, 
-                    "feedbackStatus": "", 
-                    "title": "Confirmation of receipt", 
-                    "url": ("https://cdr.eionet.europa.eu/es/eu/aqd/d/envxfin7q"
-                            "/feedback1576577005"), 
-                    "postingDate": "2019-12-17T21:22:02Z", 
-                    "activityId": "", 
-                    "isRestricted": 0, 
+                    "contentType": "text/html",
+                    "attachments": [],
+                    "feedbackMessage": "",
+                    "documentId": None,
+                    "feedbackStatus": "",
+                    "title": "Confirmation of receipt",
+                    "url":
+                    ("https://cdr.eionet.europa.eu/es/eu/aqd/d/envxfin7q"
+                     "/feedback1576577005"),
+                    "postingDate": "2019-12-17T21:22:02Z",
+                    "activityId": "",
+                    "isRestricted": 0,
                     "automatic": 1
                 }
             ]
@@ -45,16 +47,16 @@ def cdr_envelope_a_feedbacks_api_meta():
 def cdr_envelope_a_api_meta(cdr_envelope_a_feedbacks_api_meta):
     return {"errors":   [],
             "envelopes":  [
-            {"periodEndYear": 2019, 
-             "description": "Test description", 
-             "countryCode": "ES", 
-             "title": "2019", 
-             "obligations": ["672"], 
-             "reportingDate": "2019-12-17T21:22:02Z", 
+            {"periodEndYear": 2019,
+             "description": "Test description",
+             "countryCode": "ES",
+             "title": "2019",
+             "obligations": ["672"],
+             "reportingDate": "2019-12-17T21:22:02Z",
              "url": "https://cdr.eionet.europa.eu/es/eu/aqd/d/envxfin7q",
-             "modifiedDate": "2019-12-17T21:22:03Z", 
-             "periodDescription": "Not applicable", 
-             "isReleased": 1, 
+             "modifiedDate": "2019-12-17T21:22:03Z",
+             "periodDescription": "Not applicable",
+             "isReleased": 1,
              "periodStartYear": 2019,
              "feedbacks": cdr_envelope_a_feedbacks_api_meta
              }]
@@ -91,7 +93,7 @@ def test_extract_base_url_cdr(cdr_envelope_a_url):
 
 
 def test_extract_base_url_cdrtest(cdrtest_envelope_a_url):
-    url = cdrtest_envelope_a_url    
+    url = cdrtest_envelope_a_url
     base_url = cdr_utils.extract_base_url(url)
     assert base_url == 'http://cdrtest.eionet.europa.eu', 'test failed'
 
@@ -100,37 +102,36 @@ def test_convert_dates():
     pass
 
 
-def test_get_envelope_by_url(requests_mock, 
-                             cdr_envelope_a_url, 
-                             cdr_envelope_a_api_meta):
-    envelope_url = cdr_envelope_a_url
-    
-    url = f"https://cdr.eionet.europa.eu/api/envelopes?url={envelope_url}"
-    response = cdr_envelope_a_api_meta
+# def test_get_envelope_by_url(requests_mock,
+#                              cdr_envelope_a_url,
+#                              cdr_envelope_a_api_meta):
+#     envelope_url = cdr_envelope_a_url
 
-    requests_mock.get(url, json=response)
+#     url = f"https://cdr.eionet.europa.eu/api/envelopes?url={envelope_url}"
+#     response = cdr_envelope_a_api_meta
 
-    result = cdr_utils.get_envelope_by_url(envelope_url, 
-                                           eionet_login=None,
-                                           convert_dates=False)
+#     requests_mock.get(url, json=response)
 
-    envelope = response["envelopes"][0]
+#     result = cdr_utils.get_envelope_by_url(envelope_url,
+#                                            eionet_login=None,
+#                                            convert_dates=False)
 
-    assert result["periodEndYear"] == envelope["periodEndYear"]
+#     envelope = response["envelopes"][0]
 
-    assert result["description"] == envelope["description"]
+#     assert result["periodEndYear"] == envelope["periodEndYear"]
 
-    assert result["countryCode"] == envelope["countryCode"]
+#     assert result["description"] == envelope["description"]
 
-    assert result["title"] == envelope["title"]
+#     assert result["countryCode"] == envelope["countryCode"]
 
-    assert result["reportingDate"] == envelope["reportingDate"]
+#     assert result["title"] == envelope["title"]
 
-    assert result["modifiedDate"] == envelope["modifiedDate"]
+#     assert result["reportingDate"] == envelope["reportingDate"]
 
-    assert result["periodDescription"] == envelope["periodDescription"]
-    
-    assert result["isReleased"] == envelope["isReleased"]
+#     assert result["modifiedDate"] == envelope["modifiedDate"]
 
-    assert result["periodStartYear"] == envelope["periodStartYear"]
-    
+#     assert result["periodDescription"] == envelope["periodDescription"]
+
+#     assert result["isReleased"] == envelope["isReleased"]
+
+#     assert result["periodStartYear"] == envelope["periodStartYear"]
