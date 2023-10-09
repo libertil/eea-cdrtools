@@ -6,17 +6,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cdr_tools"
-version = "0.5.1"
-description = "A set of tool to interact with EEA Reportnet 2 API. It included CLI tools and supporting library"
+version = "0.5.2"
+description = "A set of tool to interact with EEA Reportnet 2 API. It includes CLI tools and supporting library"
 readme = "README.md"
-authors = [{ name = "Luca Liberti", email = "aa@aa.com" }]
+authors = [{ name = "Luca Liberti", email = "libertil@gmail.com" }]
 license = { file = "LICENSE" }
 classifiers = [
     "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
 ]
-keywords = ["EEA", "cli"]
+keywords = ["EEA", "cli", "reportnet"]
 dependencies = [
     "certifi >= 2022.6.15",
     "charset-normalizer >= 2.1.0",

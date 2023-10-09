@@ -7,7 +7,10 @@ more complex tasks
 
 ## Installation
 
-Still not available in PyPI. It can be easily installed as a stand alone tool locally using [pipx](https://pypa.github.io/pipx).  
+
+Available in PyPI.
+
+It can be easily installed as a standalone tool locally using [pipx](https://pypa.github.io/pipx).  
 
 First install pipx 
 
