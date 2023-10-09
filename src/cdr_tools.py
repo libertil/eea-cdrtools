@@ -1,11 +1,16 @@
 import csv
 import os
 import datetime
+import re
+import math
+import copy
+from collections import OrderedDict
 
 import click
 import requests
 from tabulate import tabulate
 from lxml import etree
+from lxml import html
 
 from settings import OBLIGATION_CODE_MAP, URL_MAP, FEATURE_TYPES_MAP, \
                      STANDARD_NS
@@ -13,13 +18,14 @@ from settings import OBLIGATION_CODE_MAP, URL_MAP, FEATURE_TYPES_MAP, \
 from cdr_utils import get_envelopes_rest, create_envelope, activate_envelope, \
                      delete_envelope, upload_file, get_envelope_by_url, \
                      get_history, start_envelope_qa, extract_obligation, \
-                     extract_filename, download_file
+                     extract_filename, download_file, get_feedbacks
 
 
 def get_multiple_countries_rest(countries, obligation_number, reporting_year,
                                 repo, eionet_login, released):
     """ Wrapper function to extract from CDR Rest API metadata related to
         multiple countries for a given reporting year.
+        DEPRECATED functionality included in get_envelopes_rest
 
 
     """
@@ -92,7 +98,7 @@ def parse_ns(source_file, STANDARD_NS):
 
 
 def extract_identifiers(in_file, identifier_map):
-
+    # TODO move to cdr_utils - add coments
     ns_map = parse_ns(in_file, STANDARD_NS)
 
     root = etree.parse(in_file)
@@ -103,8 +109,73 @@ def extract_identifiers(in_file, identifier_map):
     return res
 
 
-# Tools to interact with CDR infrastructure via command line
+def parse_qa_feedback(feedback_cnt):
 
+    qa_outcomes = []
+    doc = html.parse(feedback_cnt)
+    rows = doc.xpath("//td[@class='bullet']/ancestor::"
+                     "*[position()=1]")
+
+    print(f'Found {len(rows)} rows')
+
+    for r in rows:
+        err_levl = r.xpath("./td[@class='bullet']/div/@class")
+        err_code = r.xpath("./td[@class='bullet']/div/a/text()")
+        err_mesg = r.xpath("./td/span[@class='largeText']/text()")
+        if len(err_mesg) == 0:
+            err_mesg = ['']
+
+        if len(err_code) > 0:
+            qa_outcomes.append((err_code[0], err_levl[0], err_mesg[0]))
+    return qa_outcomes
+
+
+def extract_feedback_info(envelope_url, eionet_login):
+    """
+    Given an envelope url and a eionet_login tuple extracts all the feebacks
+    from the envelope including the error messages
+
+    """
+
+    feedbacks = []
+    res = get_feedbacks(envelope_url, eionet_login)
+
+    country = res["countryCode"]
+    obligation = res["obligations"][0]
+    reporting_year = res["periodStartYear"]
+
+    if len(res['feedbacks']) == 0:
+        click.echo((f"No feedback found for {obligation}"
+                    f" {country} {reporting_year}"))
+        return feedbacks
+
+    for idx, v in enumerate(res['feedbacks']):
+        if v['activityId'] == 'AutomaticQA' or 1 == 1:
+
+            feeback_status = v['feedbackStatus']
+            title = v['title']
+
+        feedback_type = title.split(':')[-1].strip()
+        print('Feedback {} {}'.format(idx+1, title))
+        errors = []
+
+        for iiidx, a in enumerate(v['attachments']):
+            attachment = requests.get(a['url'], auth=eionet_login)
+            parse_qa_feedback(attachment.content)
+            new_feedback = {'Country': country,
+                            'ObligationNumber': obligation,
+                            'Envelope': envelope_url,
+                            'FeedbackMessage': v['feedbackMessage'],
+                            'FeedbackStatus': feeback_status,
+                            'ReportingYear': reporting_year,
+                            'ManualFeedback': v['title'],
+                            'PostingDate': v['postingDate'],
+                            'Errors': errors}
+            feedbacks.append(new_feedback)
+    return feedbacks
+
+
+# Tools to interact with CDR infrastructure via command line
 @click.group()
 def main():
     pass
@@ -128,10 +199,13 @@ def main():
               type=click.Choice(OBLIGATION_CODE_MAP.keys(),
                                 case_sensitive=False),
               required=True)
+@click.option('--filter', default=None,
+              help=('Regular expression to select the url of the files '
+                    'included in the output e.g *.xml only return xml files'))
 @click.argument("year", type=int)
 @click.argument("out", type=click.File('w'), default=None, required=False)
 def list_files(country_code, cdr_user, cdr_pwd, latest, released,
-               repo, obligation, year, out):
+               repo, obligation, filter, year, out):
 
     """List a set of files in envelopes from a repo (e.g CDR or CDRTEST) for
        a given obligation, reporting year, country code.
@@ -177,12 +251,19 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
     latest_str = 'latest' if latest else ''
     click.echo(f"Extracting {latest_str} files and envelopes metadata "
                f"from {repo} for obligation: {obligation}, "
-               f"reporting year: {year if year is not None else 'all'}, "
+               f"reporting year: {year if year >0 else 'all'}, "
                f"countries: {country_code if len(country_code)>0 else 'all'}")
 
     eionet_login = (cdr_user, cdr_pwd)
 
     obligation_number = OBLIGATION_CODE_MAP[obligation][0]
+
+    if len(country_code) == 0:
+        country_code = None
+
+    if year <= 0:
+        year = None
+
     envelopes = get_envelopes_rest(obligation_number,
                                    repo=repo,
                                    eionet_login=eionet_login,
@@ -206,9 +287,11 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
             continue
 
         for f in files:
-            # Skip non xml files
-            if f['contentType'] != 'text/xml' or ('.shp.' in f['url']):
-                continue
+            # Skip files not matching the filter regular expression
+            if filter is not None:
+                if re.search(f'[^{filter}]', f['url']) is None:
+                    continue
+
             results.append({'ObligationCode': obligation,
                             'Obligation': obligation_number,
                             'Country': env['countryCode'],
@@ -216,6 +299,8 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
                             'envelope': env['url'],
                             'file': f['url'],
                             'uploaded': f['uploadDate'],
+                            'fileSize': f['fileSize'],
+                            'fileSizeHR': f['fileSizeHR'],
                             'status': env['status'],
                             'statusDate': env['statusDate']})
 
@@ -228,6 +313,85 @@ def list_files(country_code, cdr_user, cdr_pwd, latest, released,
                                            datetime.datetime.now().
                                            strftime("%Y-%m-%d_%H_%M_%S"))
         out = open(f"./{out}", "w")
+
+    writer = csv.DictWriter(out, fieldnames=fieldnames)
+
+    writer.writeheader()
+    [writer.writerow(t) for t in results]
+
+
+@main.command()
+@click.option('--country_code', '-c', default=None, type=str,
+              help='Countries to include.', multiple=True)
+@click.option('--latest/--all', default=True,
+              help='Process only last envelope')
+@click.option('--released/--draft', default=True,
+              help='Process only released envelopes')
+@click.option('--obligation', '-o',
+              type=click.Choice(OBLIGATION_CODE_MAP.keys(),
+                                case_sensitive=False),
+              required=True)
+@click.option('--tag', '-t', default=None, type=str,
+              help='Tags to be found.', multiple=True, required=True)
+@click.argument("reporting_year", type=int)
+@click.argument("out", type=click.File('w'), default='-', required=False)
+def find_xml_tag(country_code, latest, released,
+                 obligation, tag, reporting_year, out):
+    """Find an xml tag in a set of XML files belonging to
+       an Obligation,Country etc
+    """
+    latest_str = 'latest' if latest else ''
+    tag_map = {t: f"//{tag}" for t in tag}
+
+    click.echo(f"Looking for XML tags: {','.join(tag_map.keys())}"
+               f"In {latest_str} envelopes "
+               f"from CDR for obligation: {obligation} "
+               f"reporting year: {reporting_year} "
+               f"countries: {country_code if len(country_code)>0 else 'all'}")
+
+    obligation_number = OBLIGATION_CODE_MAP[obligation][0]
+
+    if len(country_code) == 0:
+        country_code = None
+
+    envelopes = get_envelopes_rest(obligation_number,
+                                   repo='CDR',
+                                   country_code=country_code,
+                                   is_released=released,
+                                   reporting_year=reporting_year,
+                                   latest=latest
+                                   )
+    results = []
+    click.echo(f"Found {len(envelopes)} envelopes")
+    if len(envelopes) == 0:
+        exit(0)
+
+    # Process each envelope
+    for idx, env in enumerate(envelopes):
+        click.echo(f"Processing envelope {idx + 1}"
+                   f" of {len(envelopes)} {env['url']}")
+
+        files = env["files"]
+
+        if len(files) == 0:
+            click.echo("No files in the envelope.")
+            continue
+
+        for iidx, fl in enumerate(files):
+            fileName = fl['url'].split('/')[-1]
+            click.echo(f"Processing file {iidx + 1}"
+                       f" of {len(files)} {fileName}")
+
+            fr = requests.get(fl['url'])
+            r = extract_identifiers(fr.content, tag_map)
+            print(r)
+
+    # Write output file
+    fieldnames = results[0].keys()
+
+    if not out:
+        out = 'output_{}.csv'.format(datetime.now().
+                                     strftime("%Y-%m-%d_(%H_%M_%S"))
 
     writer = csv.DictWriter(out, fieldnames=fieldnames)
 
@@ -296,16 +460,22 @@ def clone_cdrtest(country_code, cdrtest_user, cdrtest_pwd, latest, released,
       python cdr_tools.py clone-cdrtest -c it -c es aqd:h 2017 out.txt
 
     """
+    # TODO change name to clone_env, add parameter for target repo default to
+    #  cdrtest
     # Get the CDR envelopes per obligation
+
     latest_str = 'latest' if latest else ''
     click.echo(f"Extracting {latest_str} envelopes metadata "
                f"from CDR for obligation: {obligation} "
                f"reporting year: {reporting_year} "
-               f"countries: {country_code}")
+               f"countries: {country_code if len(country_code)>0 else 'all'}")
 
     eionet_login = (cdrtest_user, cdrtest_pwd)
 
     obligation_number = OBLIGATION_CODE_MAP[obligation][0]
+
+    if len(country_code) == 0:
+        country_code = None
 
     envelopes = get_envelopes_rest(obligation_number,
                                    repo='CDR',
@@ -379,6 +549,7 @@ def clone_cdrtest(country_code, cdrtest_user, cdrtest_pwd, latest, released,
                             )
 
             os.unlink("./{}".format(fileName))
+            # TODO deactivate envelope
 
         click.echo(f"Envelope cloned to {envelope_url}")
 
@@ -431,7 +602,7 @@ def delete_envelopes(file, envelope_field, cdrtest_user, cdrtest_pwd):
         exit(0)
 
     for idx, env in enumerate(envelopes):
-        click.echo("Deleting envelope {idx + 1} of {len(envelopes)} "
+        click.echo(f"Deleting envelope {idx + 1} of {len(envelopes)} "
                    "Country {env['Country']} Year {env['ReportingYear']} "
                    " at {env[envelope_field]}")
 
@@ -518,10 +689,152 @@ def batch_delete_envelopes(country_code, cdrtest_user, modified_after,
               help='Login user to cdr test.')
 @click.option('--cdrtest_pwd', prompt=True, hide_input=True,
               help='Password to cdr test.')
+@click.option("--n_splits", type=int, default=2)
+@click.argument("file_url", required=True)
+@click.argument("out", type=click.File('w'), default='-')
+def split_xml(file_url, cdrtest_user, cdrtest_pwd, n_splits, out):
+    """Downloads an xml file from the specified url file on CDR
+    Creates a set of files obtained by splitting the file into
+    n files containing approximately 1/n number of features
+    cdrtest_user (string): login on cdr_test platform
+    cdrtest_pwd  (string): password on cdr_test platform of cdrtest_user
+    envelope_field (string): field in the csv file storing the url of
+                             the envelopes to process
+    out (file): file where the results of the QA processing will be stored
+
+    """
+    eionet_login = (cdrtest_user, cdrtest_pwd)
+
+    click.echo((f'Splitting file {file_url} into {n_splits} chunks'))
+
+    filename = extract_filename(file_url)
+    if filename.split('.')[-1] != 'xml':
+        click.echo((f'Provide a full url to the XML file not to the envelope'))
+        exit(0)
+
+    click.echo(f'Downloading file {filename} url {file_url}')
+    download_file(file_url, '.', filename, eionet_login)
+
+    tree = etree.parse(filename)
+    os.unlink("./{}".format(filename))
+
+    root = tree.getroot()
+    features = root.xpath('./gml:featureMember', namespaces=root.nsmap)[1:]
+    n_feat = len(features)
+    click.echo((f'XML contains {n_feat} features'))
+
+    chunk_size = math.ceil(n_feat/n_splits)
+    click.echo((f'XML will be split into {n_splits} chunks '
+                f'of {chunk_size} features'))
+
+    for n in range(n_splits):
+        new_tree = copy.deepcopy(tree)
+        new_root = new_tree.getroot()
+        reporting_header = new_root.xpath('.//aqd:AQD_ReportingHeader',
+                                          namespaces=root.nsmap)[0]
+        content_tags = new_root.xpath('.//aqd:content', namespaces=root.nsmap)
+        features = new_root.xpath('./gml:featureMember',
+                                  namespaces=root.nsmap)[1:]
+
+        lower_idx = n*chunk_size
+        upper_idx = min(n_feat+1, (n+1)*chunk_size)-1
+        print(f'Chunk {n+1}: lower_index {lower_idx} uppper_index {upper_idx}')
+
+        for t in range(0, lower_idx):
+            new_root.remove(features[t])
+            reporting_header.remove(content_tags[t])
+
+        for t in range(upper_idx+1, n_feat):
+            new_root.remove(features[t])
+            reporting_header.remove(content_tags[t])
+
+        features = new_root.xpath('./gml:featureMember', namespaces=root.nsmap)
+        content_tags = new_root.xpath('.//aqd:content', namespaces=root.nsmap)
+
+        print(f'Chunk {n+1}: resulting tree containing {len(features)-1} '
+              f'features for {len(content_tags)} content tags')
+
+        new_filename = f"{filename.split('.')[0]}_{lower_idx+1}_{upper_idx+1}.xml"
+        new_tree.write(new_filename)
+
+
+@main.command()
+@click.option('--cdr_user', prompt=True, hide_input=False,
+              help='Login user to cdr reporting_year.')
+@click.option('--cdr_pwd', prompt=True, hide_input=True,
+              help='Password to cdr repo.')
+@click.option('--country_code', '-c', default=None, type=str,
+              help='Countrie to include.', multiple=True)
+@click.option('--latest/--all', default=True,
+              help='Process only last envelope')
+@click.option('--released/--draft', default=True,
+              help='Process only released envelopes')
+@click.option('--repo', '-r',
+              type=click.Choice(URL_MAP.keys(), case_sensitive=False),
+              default='CDR')
+@click.option('--obligation', '-o',
+              type=click.Choice(OBLIGATION_CODE_MAP.keys(),
+                                case_sensitive=False),
+              required=True)
+@click.argument("year", type=int)
+@click.argument("out", type=click.File('w'), default=None, required=False)
+def extract_errors(cdr_user,
+                   cdr_pwd,
+                   country_code,
+                   latest,
+                   released,
+                   repo,
+                   obligation,
+                   year,
+                   out):
+    latest_str = 'latest' if latest else ''
+    click.echo(f"Extracting {latest_str}  envelopes errors "
+               f"from {repo} for obligation: {obligation}, "
+               f"reporting year: {year if year is not None else 'all'}, "
+               f"countries: {country_code if len(country_code)>0 else 'all'}")
+
+    obligation_number = OBLIGATION_CODE_MAP[obligation][0]
+
+    if len(country_code) == 0:
+        country_code = None
+
+    eionet_login = (cdr_user, cdr_pwd)
+
+    envelopes = get_envelopes_rest(obligation_number,
+                                   repo=repo,
+                                   country_code=country_code,
+                                   eionet_login=eionet_login,
+                                   is_released=released,
+                                   reporting_year=year,
+                                   latest=latest)
+    results = []
+
+    click.echo(f"Found {len(envelopes)} envelopes")
+
+    if len(envelopes) == 0:
+        exit(0)
+
+    # Process each envelope
+    for idx, env in enumerate(envelopes):
+        click.echo(f"Processing envelope {idx + 1}"
+                   f" of {len(envelopes)} {env['url']}")
+        res = extract_feedback_info(env['url'], eionet_login)
+        results.append(res)
+
+    errors = []
+    for r in results:
+        print(r)
+
+
+@main.command()
+@click.option('--cdrtest_user', prompt=True, hide_input=False,
+              help='Login user to cdr test.')
+@click.option('--cdrtest_pwd', prompt=True, hide_input=True,
+              help='Password to cdr test.')
 @click.argument("file", type=click.File('r'), required=True)
 @click.argument("envelope_field", default='CDRTESTEnvelope')
 @click.argument("out", type=click.File('w'), default='-')
-def envelope_qa(file, envelope_field, cdrtest_user, cdrtest_pwd, out):
+def envelope_qa_file(file, envelope_field, cdrtest_user, cdrtest_pwd, out):
     """
     Extracts the QA feedbacks for the envelope urls specified in the FILE csv
     file in column ENVELOPE_FIELD and save them to OUT csv file
@@ -543,55 +856,10 @@ def envelope_qa(file, envelope_field, cdrtest_user, cdrtest_pwd, out):
     for iidx, envelope_url in enumerate(envelopes):
         click.echo((f"Processing envelope {iidx + 1} of {len(envelopes)}"
                     f"{envelope_url}"))
-        res = get_feedbacks(envelope_url, eionet_login)
 
-        country = res["countryCode"]
-        obligation = res["obligations"][0]
-        reporting_year = res["periodStartYear"]
+        new_feedback = extract_feedback_info(envelope_url, eionet_login)
 
-        if len(res['feedbacks']) == 0:
-            click.echo((f"No feedback found for {obligation}"
-                        f" {country} {reporting_year}"))
-            continue
-
-        for idx, v in enumerate(res['feedbacks']):
-            if v['activityId'] == 'AutomaticQA' or 1 == 1:
-
-                feeback_status = v['feedbackStatus']
-                title = v['title']
-
-            feedback_type = title.split(':')[-1].strip()
-            print('Feedback {} {}'.format(idx+1, title))
-            errors = []
-
-            for iiidx, a in enumerate(v['attachments']):
-                attachment = get_feedback_attachments(a['url'], eionet_login)
-                parser = etree.HTMLParser()
-                tree = etree.fromstring(attachment.content, parser)
-                rows = tree.xpath("//td[@class='bullet']/ancestor::"
-                                  "*[position()=1]")
-
-                print(f'Attachment {iiidx + 1} - Found {len(rows)} rows')
-
-                for r in rows:
-                    err_levl = r.xpath("./td[@class='bullet']/div/@class")
-                    err_code = r.xpath("./td[@class='bullet']/div/a/text()")
-                    err_mesg = r.xpath("./td/span[@class='largeText']/text()")
-                    if len(err_mesg) == 0:
-                        err_mesg = ['']
-
-                    if len(err_code) > 0:
-                        errors.append((err_code[0], err_levl[0], err_mesg[0]))
-                new_feedback = {'Country': country,
-                                'ObligationNumber': obligation,
-                                'Envelope': envelope_url,
-                                'FeedbackMessage': v['feedbackMessage'],
-                                'FeedbackStatus': feeback_status,
-                                'ReportingYear': reporting_year,
-                                'ManualFeedback': v['title'],
-                                'PostingDate': v['postingDate'],
-                                'Errors': errors}
-            feedbacks.append(new_feedback)
+        feedbacks.append(new_feedback)
 
     processed_feedbacks = []
     for v in feedbacks:
