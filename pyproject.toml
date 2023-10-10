@@ -5,9 +5,9 @@ requires      = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cdrtools"
+name = "eea-cdrtools"
 version = "0.5.2"
-description = "A set of tool to interact with EEA Reportnet 2 API. It includes CLI tools and supporting library"
+description = "A set of tool to interact with EEA Reportnet2 (CDR) API. It includes CLI tools and supporting library"
 readme = "README.md"
 authors = [{ name = "Luca Liberti", email = "libertil@gmail.com" }]
 license = { file = "LICENSE" }
@@ -33,7 +33,7 @@ requires-python = ">=3.8"
 dev = ["black", "pip-tools", "pytest"]
 
 [project.urls]
-Homepage = "https://github.com/libertil/cdr-tools"
+Homepage = "https://github.com/libertil/eea-cdrtools"
 
 [project.scripts]
 cdrtools = "cdr_tools.cdr_tools:main"

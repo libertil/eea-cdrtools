@@ -10,7 +10,21 @@ more complex tasks
 
 Available in PyPI.
 
-It can be easily installed as a standalone tool locally using [pipx](https://pypa.github.io/pipx).  
+To start, ensure you have Python 3.8 or newer. To use the package, run:
+
+	pip install --upgrade eea-cdrtools
+
+After installing the package, import it:
+
+	import cdr_tools
+
+It can also be used as a CLI tool by issuing the command:
+
+	cdrtools
+
+in a terminal.
+
+It can also be easily installed as a standalone tool locally using [pipx](https://pypa.github.io/pipx).  
 
 First install pipx 
 
@@ -28,9 +42,9 @@ otherwise
 
 then
 
-	pipx install "git+https://github.com/libertil/cdr-tools"
+	pipx install "git+https://github.com/libertil/eea-cdrtools"
 
 
-at this point cdrtools is a available at command line. You can get an overview of the functionalities by issuing
+Once installed via pip or pipcdrtools is a available at command line. You can get an overview of the functionalities by issuing
 
 	cdrtools --help
