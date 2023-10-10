@@ -12,10 +12,10 @@ from tabulate import tabulate
 from lxml import etree
 from lxml import html
 
-from settings import OBLIGATION_CODE_MAP, URL_MAP, FEATURE_TYPES_MAP, \
-                     STANDARD_NS
+from cdr_tools.settings import OBLIGATION_CODE_MAP, URL_MAP, FEATURE_TYPES_MAP,\
+                               STANDARD_NS
 
-from cdr_utils import get_envelopes_rest, create_envelope, activate_envelope, \
+from cdr_tools.cdr_utils import get_envelopes_rest, create_envelope, activate_envelope, \
                      delete_envelope, upload_file, get_envelope_by_url, \
                      get_history, start_envelope_qa, extract_obligation, \
                      extract_filename, download_file, get_feedbacks

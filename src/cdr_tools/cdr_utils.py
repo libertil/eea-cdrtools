@@ -7,8 +7,8 @@ import requests
 
 from requests.auth import HTTPBasicAuth
 
-from settings import URL_MAP, DEFAULT_FIELDS, ENVELOPES_DATE_FIELDS, \
-                     HISTORY_DATE_FIELDS, OBLIGATION_CODE_MAP
+from cdr_tools.settings import URL_MAP, DEFAULT_FIELDS, ENVELOPES_DATE_FIELDS,\
+                               HISTORY_DATE_FIELDS, OBLIGATION_CODE_MAP
 
 
 def build_url(repo, eionet_login, secure):

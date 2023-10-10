@@ -5,7 +5,7 @@ requires      = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cdr_tools"
+name = "cdrtools"
 version = "0.5.2"
 description = "A set of tool to interact with EEA Reportnet 2 API. It includes CLI tools and supporting library"
 readme = "README.md"
@@ -36,4 +36,4 @@ dev = ["black", "pip-tools", "pytest"]
 Homepage = "https://github.com/libertil/cdr-tools"
 
 [project.scripts]
-cdrtools = "cdr_tools:main"
+cdrtools = "cdr_tools.cdr_tools:main"
